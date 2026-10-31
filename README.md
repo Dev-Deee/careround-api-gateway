@@ -15,7 +15,7 @@ Spring Boot 4.1.0 / Java 25 with **Spring Cloud 2025.1.4** (`spring-cloud-starte
 ## Run
 
 Needs the services and `careround-redis` (root `docker-compose.yml`). `.env` holds only `JWT_PUBLIC_KEY` (same value as
-the other services; gitignored).
+the other services; gitignored): copy `.env.example` to `.env`.
 
 ```bash
 ./mvnw clean package -DskipTests && java -jar target/careround-api-gateway-0.0.1-SNAPSHOT.jar
