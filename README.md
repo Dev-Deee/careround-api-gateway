@@ -41,14 +41,18 @@ and the public-path check.
 |---|---|---|---|
 | 1 | `/api/v1/wards/*/alerts` | notification 8087 | yes |
 | 2 | `/api/v1/alerts/**` | notification 8087 | yes |
-| 3 | `/.well-known/jwks.json`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/activate-account` (GET page + form POST), `/api/v1/auth/confirm-email-change` | auth 8081 | **public** (rate-limited) |
-| 4 | `/api/v1/auth/**` | auth 8081 | yes |
-| 5 | `/api/v1/users/**` | user 8082 | yes |
-| 6 | `/api/v1/wards/**`, `/api/v1/attendance/**`, `/api/v1/charge-assignments/**`, `/api/v1/charge-succession/**`, `/api/v1/handovers/**`, `/api/v1/shift-definitions/**`, `/api/v1/staffing-requirements/**` | ward 8083 | yes |
-| 7 | `/api/v1/patients/**` (incl. `/{id}/next-of-kin`) | patient 8084 | yes |
-| 8 | `/api/v1/rounds/**`, `/api/v1/reviews/**`, `/api/v1/notes/**`, `/api/v1/emergencies/**` | round 8085 | yes |
-| 9 | `/api/v1/care-tasks/**` (incl. `/{id}/medication-details`), `/api/v1/care-plans/**`, `/api/v1/care-protocols/**`, `/api/v1/task-type-definitions/**` | care-task 8086 | yes |
-| 10 | `/ws/**` (WebSocket upgrade) | realtime 8088 | **public**: realtime verifies the JWT on STOMP CONNECT |
+| 3 | `/api/v1/admin/notifications`, `/api/v1/admin/notifications/**` | notification 8087 | yes |
+| 4 | `/.well-known/jwks.json`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/activate-account` (GET page + form POST), `/api/v1/auth/confirm-email-change` | auth 8081 | **public** (rate-limited) |
+| 5 | `/api/v1/auth/**` | auth 8081 | yes |
+| 6 | `/api/v1/users/**` | user 8082 | yes |
+| 7 | `/api/v1/wards/**`, `/api/v1/attendance/**`, `/api/v1/charge-assignments/**`, `/api/v1/charge-succession/**`, `/api/v1/handovers/**`, `/api/v1/shift-definitions/**`, `/api/v1/staffing-requirements/**` | ward 8083 | yes |
+| 8 | `/api/v1/patients/**` (incl. `/{id}/next-of-kin`) | patient 8084 | yes |
+| 9 | `/api/v1/rounds/**`, `/api/v1/reviews/**`, `/api/v1/notes/**`, `/api/v1/emergencies/**` | round 8085 | yes |
+| 10 | `/api/v1/care-tasks/**` (incl. `/{id}/medication-details`), `/api/v1/care-plans/**`, `/api/v1/care-protocols/**`, `/api/v1/task-type-definitions/**` | care-task 8086 | yes |
+| 11 | `/ws/**` (WebSocket upgrade) | realtime 8088 | **public**: realtime verifies the JWT on STOMP CONNECT |
+
+`RouteTableTest` resolves each read-side path with the same first-match rule and fails if a pattern is
+duplicated or shadowed by an earlier, broader one.
 
 Anything else → 404. The gateway's own `/actuator/health` is public; other actuator endpoints and the services'
 swagger/actuator are not exposed.
