@@ -70,7 +70,8 @@ Every gateway-generated error uses the services' body: `{"status", "error", "mes
 | 504 | the service did not answer within the response timeout |
 | 500 | anything unexpected (logged at ERROR with the stack trace; generic message to the client) |
 
-Errors produced by a service (400, 403, 404, 409 …) pass through unchanged. Note the services answer an unauthenticated
+Errors produced by a service (400, 403, 404, 409 …) pass through unchanged. A path inside a routed prefix that the service does not
+map (e.g. `GET /api/v1/users/`) gets the service's own 404 `No endpoint <METHOD> <path>`. Note the services answer an unauthenticated
 request with 403; through the gateway such a request is already stopped with 401.
 
 ## Correlation id
