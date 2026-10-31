@@ -20,12 +20,14 @@ public class RateLimitProperties {
 
     public record Bucket(String name, int limit) {}
 
-    // Only these three paths are limited (the JWKS endpoint on the same route is not).
+    // Only these paths are limited (the JWKS endpoint on the same route is not).
     public Bucket bucketFor(String path) {
         return switch (path) {
             case "/api/v1/auth/login" -> new Bucket("login", loginPerMinute);
             case "/api/v1/auth/refresh" -> new Bucket("refresh", refreshPerMinute);
             case "/api/v1/auth/activate-account" -> new Bucket("activate-account", activatePerMinute);
+            // Token-in-link like activation, so it gets the same limit.
+            case "/api/v1/auth/confirm-email-change" -> new Bucket("confirm-email-change", activatePerMinute);
             default -> null;
         };
     }

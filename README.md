@@ -41,7 +41,7 @@ and the public-path check.
 |---|---|---|---|
 | 1 | `/api/v1/wards/*/alerts` | notification 8087 | yes |
 | 2 | `/api/v1/alerts/**` | notification 8087 | yes |
-| 3 | `/.well-known/jwks.json`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/activate-account` (GET page + form POST) | auth 8081 | **public** (rate-limited) |
+| 3 | `/.well-known/jwks.json`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/activate-account` (GET page + form POST), `/api/v1/auth/confirm-email-change` | auth 8081 | **public** (rate-limited) |
 | 4 | `/api/v1/auth/**` | auth 8081 | yes |
 | 5 | `/api/v1/users/**` | user 8082 | yes |
 | 6 | `/api/v1/wards/**`, `/api/v1/attendance/**`, `/api/v1/charge-assignments/**`, `/api/v1/charge-succession/**`, `/api/v1/handovers/**`, `/api/v1/shift-definitions/**`, `/api/v1/staffing-requirements/**` | ward 8083 | yes |
@@ -84,7 +84,7 @@ the service, returned on the response (also on 401/404/429) and on the gateway's
 
 - CORS is configured only here. Allowed headers `Authorization, Content-Type, Accept, X-Request-Id`; `X-Request-Id` is
   exposed. The services configure no CORS, so responses carry exactly one set of CORS headers.
-- Rate limiting covers only login, refresh and activate-account, per client IP (socket peer; `X-Forwarded-For` is not
+- Rate limiting covers only login, refresh, activate-account and confirm-email-change, per client IP (socket peer; `X-Forwarded-For` is not
   trusted) in fixed one-minute windows counted in Redis. If Redis is down or slower than 500 ms the request is allowed
   and a WARN is logged (fail open), so a Redis outage cannot lock staff out. `/ws` is never limited.
 - A ward behind one NAT address shares one budget; raise the limits if tablets share an IP.
