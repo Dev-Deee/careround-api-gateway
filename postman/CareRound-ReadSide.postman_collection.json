@@ -1,0 +1,2712 @@
+{
+  "info": {
+    "_postman_id": "20570b6b-6a2b-59f6-8516-22d88e15a62e",
+    "name": "CareRound - Read Side (via gateway)",
+    "description": "Phase 9 read endpoints through the gateway: directory, patient lists, care-task list / medication log / stats, round list, attendance, handovers, admin user and notification lists. Folders 00-01, then activate the three accounts (folder 02's manual step), then 02-06.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Bootstrap",
+      "description": "",
+      "item": [
+        {
+          "name": "Login - Super Admin (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Capture token + fresh runId; forget the previous run', function () {",
+                  "    pm.environment.set('superAdminAccessToken', pm.response.json().accessToken);",
+                  "    pm.environment.set('runId', String(Date.now()).slice(-8));",
+                  "    ['nurse', 'otherNurse', 'doctor'].forEach(r => ['Email', 'Password', 'AccessToken'].forEach(s => pm.environment.unset(r + s)));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Ward (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM ReadSide {{runId}}\",\n  \"capacity\": 10\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('wardPublicId', pm.response.json().publicId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current shift (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/shift-definitions",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "shift-definitions"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Pick the shift running now', function () {",
+                  "    const h = new Date().getHours(), name = (h >= 19 || h < 7) ? 'Night' : 'Morning';",
+                  "    const s = pm.response.json().find(x => x.name === name); pm.expect(s, name).to.be.an('object');",
+                  "    pm.environment.set('currentShiftId', s.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Setup Staff",
+      "description": "",
+      "item": [
+        {
+          "name": "Create charge Nurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/create-user",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "create-user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Nkem\",\n  \"lastName\": \"Run{{runId}}\",\n  \"email\": \"pmread.nkem.{{runId}}@careround.com\",\n  \"phoneNumber\": \"0821{{runId}}\",\n  \"role\": \"NURSE\",\n  \"grade\": \"STAFF_NURSE\",\n  \"licenseNumber\": \"LIC-PMREAD-NKEM-{{runId}}\",\n  \"specialization\": \"General\",\n  \"assignedWardId\": \"{{wardPublicId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Remember the nurse email', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING_VERIFICATION');",
+                  "    pm.environment.set('nurseEmail', JSON.parse(pm.request.body.raw.replace(/{{runId}}/g, pm.environment.get('runId'))).email);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create other Nurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/create-user",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "create-user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Ola\",\n  \"lastName\": \"Run{{runId}}\",\n  \"email\": \"pmread.ola.{{runId}}@careround.com\",\n  \"phoneNumber\": \"0822{{runId}}\",\n  \"role\": \"NURSE\",\n  \"grade\": \"STAFF_NURSE\",\n  \"licenseNumber\": \"LIC-PMREAD-OLA-{{runId}}\",\n  \"specialization\": \"General\",\n  \"assignedWardId\": \"{{wardPublicId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Remember the other nurse email', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING_VERIFICATION');",
+                  "    pm.environment.set('otherNurseEmail', JSON.parse(pm.request.body.raw.replace(/{{runId}}/g, pm.environment.get('runId'))).email);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Doctor (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/create-user",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "create-user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Dami\",\n  \"lastName\": \"Run{{runId}}\",\n  \"email\": \"pmread.dami.{{runId}}@careround.com\",\n  \"phoneNumber\": \"0823{{runId}}\",\n  \"role\": \"DOCTOR\",\n  \"grade\": \"MEDICAL_OFFICER\",\n  \"licenseNumber\": \"LIC-PMREAD-DAMI-{{runId}}\",\n  \"specialization\": \"General\",\n  \"assignedWardId\": \"{{wardPublicId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Remember the doctor email', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING_VERIFICATION');",
+                  "    pm.environment.set('doctorEmail', JSON.parse(pm.request.body.raw.replace(/{{runId}}/g, pm.environment.get('runId'))).email);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Activate and Log In",
+      "description": "",
+      "item": [
+        {
+          "name": "MANUAL STEP - activate nurse, otherNurse and doctor from the emailed links",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/actuator/health",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// notification-service console prints NOTIFICATION [EMAIL -> <email>]: ... Activate your account: <link>",
+                  "// Set nursePassword, otherNursePassword and doctorPassword in the environment, open each link, submit the password.",
+                  "pm.test('Passwords set for the next logins', function () {",
+                  "    ['nursePassword', 'otherNursePassword', 'doctorPassword'].forEach(v => pm.expect(pm.environment.get(v), v).to.be.a('string').and.not.empty);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - nurse (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{nurseEmail}}\",\n  \"password\": \"{{nursePassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('nurseAccessToken', pm.response.json().accessToken); pm.environment.set('nurseId', JSON.parse(require('atob')(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - otherNurse (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{otherNurseEmail}}\",\n  \"password\": \"{{otherNursePassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('otherNurseAccessToken', pm.response.json().accessToken); pm.environment.set('otherNurseId', JSON.parse(require('atob')(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - doctor (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{doctorEmail}}\",\n  \"password\": \"{{doctorPassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('doctorAccessToken', pm.response.json().accessToken); pm.environment.set('doctorId', JSON.parse(require('atob')(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Data for the reads",
+      "description": "",
+      "item": [
+        {
+          "name": "Grant charge to nurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/charge-assignments",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charge-assignments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wardId\": \"{{wardPublicId}}\",\n  \"nurseId\": \"{{nurseId}}\",\n  \"shiftId\": \"{{currentShiftId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patient A (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Run{{runId}}\",\n  \"wardId\": \"{{wardPublicId}}\",\n  \"bedNumber\": \"A-{{runId}}\",\n  \"dateOfBirth\": \"1960-01-01\",\n  \"status\": \"ADMITTED\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('patientAId', pm.response.json().publicId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patient B (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Bayo\",\n  \"lastName\": \"Run{{runId}}\",\n  \"wardId\": \"{{wardPublicId}}\",\n  \"bedNumber\": \"B-{{runId}}\",\n  \"dateOfBirth\": \"1961-01-01\",\n  \"status\": \"ADMITTED\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('patientBId', pm.response.json().publicId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Task type - doctor order (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/task-type-definitions",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "task-type-definitions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM Read MED {{runId}}\",\n  \"defaultPriority\": 2,\n  \"requiresDoctorOrder\": true\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('taskTypeId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order 1 - already overdue (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask1Start}}\",\n  \"deadline\": \"{{gentask1Deadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = m => new Date(Date.now() + m * 60000).toISOString().replace(/\\.\\d{3}Z$/, 'Z');",
+                  "pm.environment.set('gentask1Start', iso(-120)); pm.environment.set('gentask1Deadline', iso(-30));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Task carries the patient\\'s wardId', function () { pm.expect(pm.response.json().wardId).to.eql(pm.environment.get('wardPublicId')); pm.environment.set('task1Id', pm.response.json().publicId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order 2 - due in 1h (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask2Start}}\",\n  \"deadline\": \"{{gentask2Deadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = m => new Date(Date.now() + m * 60000).toISOString().replace(/\\.\\d{3}Z$/, 'Z');",
+                  "pm.environment.set('gentask2Start', iso(-10)); pm.environment.set('gentask2Deadline', iso(60));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Task carries the patient\\'s wardId', function () { pm.expect(pm.response.json().wardId).to.eql(pm.environment.get('wardPublicId')); pm.environment.set('task2Id', pm.response.json().publicId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order 3 - due in 2h (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask3Start}}\",\n  \"deadline\": \"{{gentask3Deadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = m => new Date(Date.now() + m * 60000).toISOString().replace(/\\.\\d{3}Z$/, 'Z');",
+                  "pm.environment.set('gentask3Start', iso(-10)); pm.environment.set('gentask3Deadline', iso(120));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Task carries the patient\\'s wardId', function () { pm.expect(pm.response.json().wardId).to.eql(pm.environment.get('wardPublicId')); pm.environment.set('task3Id', pm.response.json().publicId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order for unknown patient (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"00000000-0000-0000-0000-000000000000\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask2Start}}\",\n  \"deadline\": \"{{gentask2Deadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medication details on order 2 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{task2Id}}/medication-details",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{task2Id}}",
+                "medication-details"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"drugName\": \"Paracetamol\",\n  \"amount\": 500,\n  \"unit\": \"MILLIGRAM\",\n  \"route\": \"ORAL\",\n  \"frequency\": \"once\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('careTaskPublicId is the task publicId', function () { pm.expect(pm.response.json().careTaskPublicId).to.eql(pm.environment.get('task2Id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nurse starts order 2 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{task2Id}}/start",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{task2Id}}",
+                "start"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nurse completes order 2 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{task2Id}}/complete",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{task2Id}}",
+                "complete"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('completedAt set', function () { pm.expect(pm.response.json().completedAt).to.be.a('string'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor creates round for A and B (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/rounds",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "rounds"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wardId\": \"{{wardPublicId}}\",\n  \"patientIds\": [\n    \"{{patientAId}}\",\n    \"{{patientBId}}\"\n  ]\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('createdBy/conductedBy = doctor, 2 pending', function () { const r = pm.response.json(); pm.expect(r.conductedBy).to.eql(pm.environment.get('doctorId')); pm.expect(r.reviewCounts.pending).to.eql(2); pm.environment.set('roundPublicId', r.publicId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nurse clocks in (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/attendance/clock-in",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance",
+                "clock-in"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nurse starts handover to other nurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/handovers",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "handovers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wardId\": \"{{wardPublicId}}\",\n  \"incomingChargeNurseId\": \"{{otherNurseId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('handoverId', pm.response.json().publicId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Handover note (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/handovers/{{handoverId}}/notes",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "handovers",
+                "{{handoverId}}",
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"note\": \"Watch BP overnight\",\n  \"urgency\": \"WATCH\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Reads",
+      "description": "",
+      "item": [
+        {
+          "name": "Directory search by name prefix (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/users/directory?q=Run{{runId}}&size=10",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "directory"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Run{{runId}}"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('3 staff, no email or phone', function () {",
+                  "    const b = pm.response.json(); pm.expect(b.total).to.eql(3);",
+                  "    b.items.forEach(i => { pm.expect(i).to.not.have.any.keys('email', 'phoneNumber', 'phone'); pm.expect(i.displayName).to.be.a('string'); });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Directory batch by ids (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/users/directory?ids={{nurseId}},{{doctorId}},00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "directory"
+              ],
+              "query": [
+                {
+                  "key": "ids",
+                  "value": "{{nurseId}},{{doctorId}},00000000-0000-0000-0000-000000000000"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('found entries only', function () { pm.expect(pm.response.json().length).to.eql(2); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patients page 0 size 1 (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients?wardId={{wardPublicId}}&page=0&size=1",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('total 2, one item', function () { const b = pm.response.json(); pm.expect(b.total).to.eql(2); pm.expect(b.items.length).to.eql(1); pm.environment.set('firstPatientOnPage0', b.items[0].publicId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patients page 1 size 1 (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients?wardId={{wardPublicId}}&page=1&size=1",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('the other patient', function () { const b = pm.response.json(); pm.expect(b.items.length).to.eql(1); pm.expect(b.items[0].publicId).to.not.eql(pm.environment.get('firstPatientOnPage0')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks for ward page 0 size 2 (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId={{wardPublicId}}&size=2",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "size",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('3 tasks, deadline ascending, list fields', function () {",
+                  "    const b = pm.response.json(); pm.expect(b.total).to.eql(3); pm.expect(b.items.length).to.eql(2);",
+                  "    pm.expect(b.items[0].publicId).to.eql(pm.environment.get('task1Id'));",
+                  "    pm.expect(b.items[0]).to.include.all.keys('publicId', 'patientId', 'wardId', 'taskTypeId', 'priority', 'origin', 'status', 'windowStart', 'deadline', 'assignedNurseId', 'createdBy', 'carePlanPublicId', 'overdueDerived');",
+                  "    pm.expect(b.items[0].overdueDerived).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks page 1 (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId={{wardPublicId}}&size=2&page=1",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "size",
+                  "value": "2"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('last task', function () { pm.expect(pm.response.json().items[0].publicId).to.eql(pm.environment.get('task3Id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks overdueDerived (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId={{wardPublicId}}&overdueDerived=true",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "overdueDerived",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('only order 1', function () { pm.expect(pm.response.json().total).to.eql(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks mine=true (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?mine=true",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "mine",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('the completed order', function () { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].status).to.eql('COMPLETED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks unassigned + status (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId={{wardPublicId}}&unassigned=true&status=PENDING",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "unassigned",
+                  "value": "true"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('orders 1 and 3', function () { pm.expect(pm.response.json().total).to.eql(2); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medication log - prescriber (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/medication-log?patientId={{patientAId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "medication-log"
+              ],
+              "query": [
+                {
+                  "key": "patientId",
+                  "value": "{{patientAId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('the administered order with nurse and time', function () {",
+                  "    const e = pm.response.json().items[0]; pm.expect(pm.response.json().total).to.eql(1);",
+                  "    pm.expect(e.careTaskPublicId).to.eql(pm.environment.get('task2Id')); pm.expect(e.status).to.eql('COMPLETED');",
+                  "    pm.expect(e.administeredByNurseId).to.eql(pm.environment.get('nurseId')); pm.expect(e.administeredAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ward task stats - charge nurse (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/stats?wardId={{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('counts and derived overdue', function () {",
+                  "    const s = pm.response.json(); pm.expect(s.total).to.eql(3); pm.expect(s.byStatus.COMPLETED).to.eql(1);",
+                  "    pm.expect(s.overdueDerived).to.eql(1); pm.expect(s.oldestOverdueAgeSeconds).to.be.above(1000); pm.expect(s.generatedAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rounds - doctor's own (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/rounds",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "rounds"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('one round with review counts', function () { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].reviewCounts).to.eql({ pending: 2, suspended: 0, resolved: 0 }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rounds - charge nurse for ward (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/rounds?wardId={{wardPublicId}}&doctorId={{doctorId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "rounds"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "doctorId",
+                  "value": "{{doctorId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('the round', function () { pm.expect(pm.response.json().items[0].publicId).to.eql(pm.environment.get('roundPublicId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Round patients (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/rounds/{{roundPublicId}}/patients",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "rounds",
+                "{{roundPublicId}}",
+                "patients"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('2 reviews with roundPublicId', function () { const b = pm.response.json(); pm.expect(b.length).to.eql(2); b.forEach(r => pm.expect(r.roundPublicId).to.eql(pm.environment.get('roundPublicId'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attendance on duty - charge nurse (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/attendance?wardId={{wardPublicId}}&status=CLOCKED_IN",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "status",
+                  "value": "CLOCKED_IN"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('the nurse is on duty', function () { pm.expect(pm.response.json().items.map(a => a.staffId)).to.include(pm.environment.get('nurseId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Handovers for ward - charge nurse (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/handovers?wardId={{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "handovers"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('one pending handover', function () { pm.expect(pm.response.json().total).to.eql(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Handover detail - incoming nurse (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/handovers/{{handoverId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "handovers",
+                "{{handoverId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('note included', function () { const h = pm.response.json(); pm.expect(h.notes.length).to.eql(1); pm.expect(h.notes[0].urgency).to.eql('WATCH'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wards paged (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards?size=1",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('one item', function () { pm.expect(pm.response.json().items.length).to.eql(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin user list (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/users?q=pmread&role=NURSE&size=100",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "pmread"
+                },
+                {
+                  "key": "role",
+                  "value": "NURSE"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('this run\\'s nurses are listed', function () { const e = pm.response.json().items.map(u => u.email); pm.expect(e).to.include(pm.environment.get('nurseEmail')); pm.expect(e).to.include(pm.environment.get('otherNurseEmail')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin notifications - email, masked (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/admin/notifications?channel=EMAIL&size=5",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "EMAIL"
+                },
+                {
+                  "key": "size",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('masked recipients, no body', function () {",
+                  "    pm.response.json().items.forEach(n => { pm.expect(n.recipientMasked).to.match(/^.?\\*\\*\\*@/); pm.expect(n).to.not.have.any.keys('body', 'recipient'); });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin notifications - failed (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/admin/notifications/failed",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "notifications",
+                "failed"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Paged envelope {items,page,size,total}', function () { pm.expect(pm.response.json()).to.have.all.keys('items', 'page', 'size', 'total'); });",
+                  "pm.test('only FAILED', function () { pm.response.json().items.forEach(n => pm.expect(n.status).to.eql('FAILED')); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Denials and bad input",
+      "description": "",
+      "item": [
+        {
+          "name": "Medication log as nurse (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/medication-log?patientId={{patientAId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "medication-log"
+              ],
+              "query": [
+                {
+                  "key": "patientId",
+                  "value": "{{patientAId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stats as non-charge nurse (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/stats?wardId={{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stats as doctor (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/stats?wardId={{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rounds as non-charge nurse (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/rounds?wardId={{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "rounds"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rounds - doctor asks for another doctor (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/rounds?doctorId={{nurseId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "rounds"
+              ],
+              "query": [
+                {
+                  "key": "doctorId",
+                  "value": "{{nurseId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attendance as non-charge nurse (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/attendance?wardId={{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin user list as nurse (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/users",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "users"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin notifications as doctor (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/admin/notifications",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "notifications"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks without a scope filter (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?status=PENDING",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks malformed wardId (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId=not-a-uuid",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "not-a-uuid"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patients batch over 100 ids (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients?ids={{genManyIds}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ],
+              "query": [
+                {
+                  "key": "ids",
+                  "value": "{{genManyIds}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('genManyIds', Array.from({length: 101}, (_, i) => '00000000-0000-0000-0000-' + String(i).padStart(12, '0')).join(','));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Size over max is clamped (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId={{wardPublicId}}&size=1000",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "size",
+                  "value": "1000"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('size 100', function () { pm.expect(pm.response.json().size).to.eql(100); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Cleanup",
+      "description": "",
+      "item": [
+        {
+          "name": "Override clock-out of the nurse (204)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/attendance/override-clock-out",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance",
+                "override-clock-out"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"staffId\": \"{{nurseId}}\",\n  \"reason\": \"Postman read-side run cleanup\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level: (1) auto-login, (2) fail fast on unset ids. Same pattern as the other CareRound collections.",
+          "const roles = [['superAdmin', 'superAdminEmail', 'superAdminPassword'], ['nurse', 'nurseEmail', 'nursePassword'],",
+          "               ['otherNurse', 'otherNurseEmail', 'otherNursePassword'], ['doctor', 'doctorEmail', 'doctorPassword']];",
+          "function expiresSoon(token) {",
+          "    if (!token) return true;",
+          "    try {",
+          "        const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+          "        return JSON.parse(require('atob')(b64)).exp * 1000 - Date.now() < 60000;",
+          "    } catch (e) { return true; }",
+          "}",
+          "const isLoginRequest = pm.request.url.getPath().endsWith('/api/v1/auth/login');",
+          "roles.forEach(([role, emailVar, passwordVar]) => {",
+          "    if (isLoginRequest) return;",
+          "    const email = pm.environment.get(emailVar), password = pm.environment.get(passwordVar);",
+          "    if (!email || !password || !expiresSoon(pm.environment.get(role + 'AccessToken'))) return;",
+          "    pm.sendRequest({",
+          "        url: pm.environment.get('gatewayBaseUrl') + '/api/v1/auth/login', method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ identifier: email, password: password }) }",
+          "    }, (err, res) => {",
+          "        if (!err && res.code === 200) pm.environment.set(role + 'AccessToken', res.json().accessToken);",
+          "        else console.warn('Auto-login failed for ' + role + ': ' + (err || res.code));",
+          "    });",
+          "});",
+          "const text = pm.request.url.toString() + ((pm.request.body && pm.request.body.raw) || '');",
+          "(text.match(/{{\\s*[A-Za-z]\\w*\\s*}}/g) || []).forEach(ref => {",
+          "    const name = ref.replace(/[{}\\s]/g, '');",
+          "    if (name.endsWith('AccessToken')) return;",
+          "    if (name.startsWith('gen')) return;                     // generated by the request's own pre-request script",
+          "    const value = pm.variables.get(name);",
+          "    if (value === undefined || value === '' || value === 'null') {",
+          "        throw new Error('{{' + name + '}} is not set. Run the request that captures it first (or set it in the environment).');",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ]
+}

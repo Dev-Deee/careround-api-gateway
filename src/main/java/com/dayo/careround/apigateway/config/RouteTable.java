@@ -22,6 +22,8 @@ public final class RouteTable {
                     List.of("/api/v1/wards/*/alerts")),
             new GatewayRoute("notification-alerts", Service.NOTIFICATION, Access.JWT,
                     List.of("/api/v1/alerts/**")),
+            new GatewayRoute("notification-admin", Service.NOTIFICATION, Access.JWT,
+                    List.of("/api/v1/admin/notifications", "/api/v1/admin/notifications/**")),
             new GatewayRoute(AUTH_PUBLIC_ROUTE_ID, Service.AUTH, Access.PUBLIC,
                     List.of("/.well-known/jwks.json", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/activate-account",
                             "/api/v1/auth/confirm-email-change")),
