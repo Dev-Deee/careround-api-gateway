@@ -1,0 +1,840 @@
+{
+  "info": {
+    "_postman_id": "7d8722b9-e3c2-4521-95ff-f091e8c8abf6",
+    "name": "CareRound - API Gateway",
+    "description": "Gateway behaviour on :8080: public routes, consistent 401s, route order (notification /wards/{id}/alerts vs ward /wards/{id}), 404 for unrouted paths, X-Request-Id, CORS and the login rate limit (429).\nSet superAdminPassword in the environment. Run the folders in order; folder 05 uses up this IP's login allowance for up to a minute.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Public routes",
+      "item": [
+        {
+          "name": "Login - Super Admin, public (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Capture token + runId', function () {",
+                  "    pm.environment.set('superAdminAccessToken', pm.response.json().accessToken);",
+                  "    pm.environment.set('runId', String(Date.now()).slice(-8));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "JWKS, public (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/.well-known/jwks.json",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                ".well-known",
+                "jwks.json"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activation page, public (400 without token, from auth-service)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/activate-account",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "activate-account"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reaches auth-service without a JWT (not a gateway 401)', function () { pm.expect(pm.response.code).to.not.eql(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Gateway health (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/actuator/health",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('UP', function () { pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - 401 at the gateway",
+      "item": [
+        {
+          "name": "Protected route, no token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});",
+                  "pm.test('WWW-Authenticate: Bearer', function () { pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'); });",
+                  "pm.test('message: Missing bearer token', function () { pm.expect(pm.response.json().message).to.eql('Missing bearer token'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected route, Basic auth header (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Basic dXNlcjpwYXNz"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});",
+                  "pm.test('WWW-Authenticate: Bearer', function () { pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'); });",
+                  "pm.test('message: Missing bearer token', function () { pm.expect(pm.response.json().message).to.eql('Missing bearer token'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected route, garbage token (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer not.a.jwt"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});",
+                  "pm.test('WWW-Authenticate: Bearer', function () { pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'); });",
+                  "pm.test('message: Invalid token', function () { pm.expect(pm.response.json().message).to.eql('Invalid token'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected auth route /api/v1/auth/logout, no token (401)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/logout",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});",
+                  "pm.test('WWW-Authenticate: Bearer', function () { pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'); });",
+                  "pm.test('message: Missing bearer token', function () { pm.expect(pm.response.json().message).to.eql('Missing bearer token'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notification alerts route, no token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/unresolved-ward",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "unresolved-ward"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});",
+                  "pm.test('WWW-Authenticate: Bearer', function () { pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'); });",
+                  "pm.test('message: Missing bearer token', function () { pm.expect(pm.response.json().message).to.eql('Missing bearer token'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Routing",
+      "item": [
+        {
+          "name": "Create Ward (201, ward-service)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gateway Ward {{runId}}\",\n  \"capacity\": 10\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Capture wardPublicId', function () { pm.environment.set('wardPublicId', pm.response.json().publicId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/wards/{id} goes to ward-service (200, ward object)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards/{{wardPublicId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards",
+                "{{wardPublicId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Ward object from ward-service', function () { pm.expect(pm.response.json().name).to.eql('Gateway Ward ' + pm.environment.get('runId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/wards/{id}/alerts goes to notification-service (200, alert list)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards/{{wardPublicId}}/alerts",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards",
+                "{{wardPublicId}}",
+                "alerts"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Array from notification-service, not a ward-service 404', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unrouted path (404 JSON)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/nothing-here",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "nothing-here"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Downstream actuator not exposed (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/actuator/env",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "env"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin lists unresolved-ward alerts through the gateway (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/unresolved-ward",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "unresolved-ward"
+              ]
+            },
+            "description": "Admin may list unresolved-ward alerts; a nurse would get 403 from notification-service, not the gateway."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Correlation id",
+      "item": [
+        {
+          "name": "No X-Request-Id: one is generated",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('X-Request-Id returned', function () { pm.expect(pm.response.headers.get('X-Request-Id')).to.match(/^[0-9a-f-]{36}$/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "X-Request-Id echoed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "pm-gw-{{runId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            },
+            "description": "The gateway log has: requestId=pm-gw-<runId> GET /api/v1/wards -> 200 OK route=ward"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Same id back', function () { pm.expect(pm.response.headers.get('X-Request-Id')).to.eql('pm-gw-' + pm.environment.get('runId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401s carry X-Request-Id too",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('X-Request-Id on the 401', function () { pm.expect(pm.response.headers.get('X-Request-Id')).to.be.a('string'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - CORS",
+      "item": [
+        {
+          "name": "Preflight from http://localhost:5173 (200)",
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              },
+              {
+                "key": "Access-Control-Request-Headers",
+                "value": "authorization,content-type,x-request-id"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Origin allowed, Authorization allowed', function () {",
+                  "    pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:5173');",
+                  "    pm.expect(pm.response.headers.get('Access-Control-Allow-Headers').toLowerCase()).to.include('authorization');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preflight from a disallowed origin (403)",
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "https://evil.example.com"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });",
+                  "pm.test('No Allow-Origin header', function () { pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.be.false; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Rate limit (run last)",
+      "item": [
+        {
+          "name": "11th login from this IP within a minute (429)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"ratelimit.{{runId}}@careround.test\",\n  \"password\": \"wrong-password\"\n}"
+            },
+            "description": "Limit: app.rate-limit.login-per-minute (default 10) per client IP, fixed one-minute windows. If the run straddles a minute boundary the count resets; re-run."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ten logins first (wrong password: rejected by auth-service, but each still counts against the per-IP limit).",
+                  "for (let i = 0; i < 10; i++) {",
+                  "    pm.sendRequest({ url: pm.environment.get('gatewayBaseUrl') + '/api/v1/auth/login', method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ identifier: 'ratelimit.' + pm.environment.get('runId') + '@careround.test', password: 'wrong-password' }) } }, () => {});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 429', function () { pm.response.to.have.status(429); });",
+                  "pm.test('Error body {status, error, message, timestamp}', function () {",
+                  "    pm.expect(Object.keys(pm.response.json()).sort()).to.eql(['error', 'message', 'status', 'timestamp']);",
+                  "});",
+                  "pm.test('Retry-After set', function () { pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
