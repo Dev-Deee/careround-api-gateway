@@ -1,5 +1,6 @@
 package com.dayo.careround.apigateway.config;
 
+import com.dayo.careround.apigateway.filter.AuthRateLimitFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
@@ -15,6 +16,7 @@ import static org.springframework.cloud.gateway.support.RouteMetadataUtils.RESPO
 public class GatewayRoutesConfig {
 
     private final RoutesProperties routesProperties;
+    private final AuthRateLimitFilter authRateLimitFilter;
 
     @Bean
     public RouteLocator careRoundRoutes(RouteLocatorBuilder builder) {
@@ -25,7 +27,10 @@ public class GatewayRoutesConfig {
             routes.route(route.id(), r -> {
                 var spec = r.order(order)
                         .path(route.paths().toArray(String[]::new));
-                return spec
+                var withFilters = RouteTable.AUTH_PUBLIC_ROUTE_ID.equals(route.id())
+                        ? spec.filters(f -> f.filter(authRateLimitFilter))
+                        : spec;
+                return withFilters
                         .metadata(CONNECT_TIMEOUT_ATTR, routesProperties.getConnectTimeoutMs())
                         .metadata(RESPONSE_TIMEOUT_ATTR, routesProperties.getResponseTimeoutMs())
                         .uri(routesProperties.urlFor(route.service()));
