@@ -618,7 +618,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"PM Read MED {{runId}}\",\n  \"defaultPriority\": 2,\n  \"requiresDoctorOrder\": true\n}"
+              "raw": "{\n  \"name\": \"PM Read MED {{runId}}\",\n  \"defaultPriorityLevel\": \"HIGH\",\n  \"requiresDoctorOrder\": true\n}"
             }
           },
           "response": [],
@@ -662,7 +662,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask1Start}}\",\n  \"deadline\": \"{{gentask1Deadline}}\"\n}"
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask1Start}}\",\n  \"deadline\": \"{{gentask1Deadline}}\"\n}"
             }
           },
           "response": [],
@@ -716,7 +716,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask2Start}}\",\n  \"deadline\": \"{{gentask2Deadline}}\"\n}"
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask2Start}}\",\n  \"deadline\": \"{{gentask2Deadline}}\"\n}"
             }
           },
           "response": [],
@@ -770,7 +770,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask3Start}}\",\n  \"deadline\": \"{{gentask3Deadline}}\"\n}"
+              "raw": "{\n  \"patientId\": \"{{patientAId}}\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask3Start}}\",\n  \"deadline\": \"{{gentask3Deadline}}\"\n}"
             }
           },
           "response": [],
@@ -824,7 +824,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"patientId\": \"00000000-0000-0000-0000-000000000000\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priority\": 2,\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask2Start}}\",\n  \"deadline\": \"{{gentask2Deadline}}\"\n}"
+              "raw": "{\n  \"patientId\": \"00000000-0000-0000-0000-000000000000\",\n  \"taskTypeId\": \"{{taskTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{gentask2Start}}\",\n  \"deadline\": \"{{gentask2Deadline}}\"\n}"
             }
           },
           "response": [],
@@ -1568,12 +1568,69 @@
           "response": [],
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Order 1 was created already late: give the overdue timer one poll (2 s) to store OVERDUE.",
+                  "setTimeout(() => {}, 3000);"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('orders 1 and 3', function () { pm.expect(pm.response.json().total).to.eql(2); });"
+                  "pm.test('order 3 only: order 1 was created already late and is now stored OVERDUE', function () { const b = pm.response.json(); pm.expect(b.total).to.eql(1); pm.expect(b.items[0].publicId).to.eql(pm.environment.get('task3Id')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care tasks status=OVERDUE (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{nurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks?wardId={{wardPublicId}}&status=OVERDUE",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ],
+              "query": [
+                {
+                  "key": "wardId",
+                  "value": "{{wardPublicId}}"
+                },
+                {
+                  "key": "status",
+                  "value": "OVERDUE"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('order 1 is stored OVERDUE with overdueAt and priorityLevel', function () { const b = pm.response.json(); pm.expect(b.total).to.eql(1);",
+                  "    const t = b.items[0]; pm.expect(t.publicId).to.eql(pm.environment.get('task1Id')); pm.expect(t.overdueAt).to.be.a('string'); pm.expect(t.priorityLevel).to.eql('HIGH'); });"
                 ]
               }
             }

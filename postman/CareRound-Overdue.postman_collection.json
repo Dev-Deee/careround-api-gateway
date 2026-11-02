@@ -1,0 +1,1825 @@
+{
+  "info": {
+    "_postman_id": "371703fe-c849-5e4a-9f53-befbf6eea7a3",
+    "name": "CareRound - Overdue and targeted alerts (via gateway)",
+    "description": "Phase 10a through the gateway: real overdue timers, MEDICATION_OVERDUE to prescriber and charge nurse, TASK_OVERDUE ward alert, MEDICATION_ADMINISTERED INFO alert, /alerts/mine, acknowledge rules. Folders 00-01, activate the three accounts (folder 02's manual step), then 02-07.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Bootstrap",
+      "description": "",
+      "item": [
+        {
+          "name": "Login - Super Admin (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{superAdminEmail}}\",\n  \"password\": \"{{superAdminPassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Capture token + fresh runId; forget the previous run', function () {",
+                  "    pm.environment.set('superAdminAccessToken', pm.response.json().accessToken);",
+                  "    pm.environment.set('runId', String(Date.now()).slice(-8));",
+                  "    ['doctor', 'chargeNurse', 'otherNurse'].forEach(r => ['Email', 'Password', 'AccessToken', 'Id'].forEach(s => pm.environment.unset(r + s)));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Ward (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM Overdue {{runId}}\",\n  \"capacity\": 10\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('wardPublicId', pm.response.json().publicId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current shift (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/shift-definitions",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "shift-definitions"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Pick the shift running now', function () {",
+                  "    const h = new Date().getHours(), name = (h >= 19 || h < 7) ? 'Night' : 'Morning';",
+                  "    const s = pm.response.json().find(x => x.name === name); pm.expect(s, name).to.be.an('object');",
+                  "    pm.environment.set('currentShiftId', s.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Setup Staff",
+      "description": "",
+      "item": [
+        {
+          "name": "Create Doctor (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/create-user",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "create-user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Dayo\",\n  \"lastName\": \"Run{{runId}}\",\n  \"email\": \"pmoverdue.dayo.{{runId}}@careround.com\",\n  \"phoneNumber\": \"0831{{runId}}\",\n  \"role\": \"DOCTOR\",\n  \"grade\": \"MEDICAL_OFFICER\",\n  \"licenseNumber\": \"LIC-PMOVD-DAYO-{{runId}}\",\n  \"specialization\": \"General\",\n  \"assignedWardId\": \"{{wardPublicId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Remember the email', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING_VERIFICATION');",
+                  "    pm.environment.set('doctorEmail', JSON.parse(pm.request.body.raw.replace(/{{runId}}/g, pm.environment.get('runId'))).email);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create charge Nurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/create-user",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "create-user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Chioma\",\n  \"lastName\": \"Run{{runId}}\",\n  \"email\": \"pmoverdue.chioma.{{runId}}@careround.com\",\n  \"phoneNumber\": \"0832{{runId}}\",\n  \"role\": \"NURSE\",\n  \"grade\": \"STAFF_NURSE\",\n  \"licenseNumber\": \"LIC-PMOVD-CHIOMA-{{runId}}\",\n  \"specialization\": \"General\",\n  \"assignedWardId\": \"{{wardPublicId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Remember the email', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING_VERIFICATION');",
+                  "    pm.environment.set('chargeNurseEmail', JSON.parse(pm.request.body.raw.replace(/{{runId}}/g, pm.environment.get('runId'))).email);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create other Nurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/admin/create-user",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "admin",
+                "create-user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Tunde\",\n  \"lastName\": \"Run{{runId}}\",\n  \"email\": \"pmoverdue.tunde.{{runId}}@careround.com\",\n  \"phoneNumber\": \"0833{{runId}}\",\n  \"role\": \"NURSE\",\n  \"grade\": \"STAFF_NURSE\",\n  \"licenseNumber\": \"LIC-PMOVD-TUNDE-{{runId}}\",\n  \"specialization\": \"General\",\n  \"assignedWardId\": \"{{wardPublicId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Remember the email', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('PENDING_VERIFICATION');",
+                  "    pm.environment.set('otherNurseEmail', JSON.parse(pm.request.body.raw.replace(/{{runId}}/g, pm.environment.get('runId'))).email);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Activate and Log In",
+      "description": "",
+      "item": [
+        {
+          "name": "MANUAL STEP - activate doctor, chargeNurse and otherNurse from the emailed links",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/actuator/health",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// notification-service console: NOTIFICATION [EMAIL -> d***@careround.com] key=user-registered-<userId>: ... <link>",
+                  "// Set doctorPassword, chargeNursePassword and otherNursePassword in the environment, open each link, submit the password.",
+                  "pm.test('Passwords set for the next logins', function () {",
+                  "    ['doctorPassword', 'chargeNursePassword', 'otherNursePassword'].forEach(v => pm.expect(pm.environment.get(v), v).to.be.a('string').and.not.empty);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - doctor (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{doctorEmail}}\",\n  \"password\": \"{{doctorPassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('doctorAccessToken', pm.response.json().accessToken); pm.environment.set('doctorId', JSON.parse(require('atob')(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - chargeNurse (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{chargeNurseEmail}}\",\n  \"password\": \"{{chargeNursePassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('chargeNurseAccessToken', pm.response.json().accessToken); pm.environment.set('chargeNurseId', JSON.parse(require('atob')(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - otherNurse (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"{{otherNurseEmail}}\",\n  \"password\": \"{{otherNursePassword}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('otherNurseAccessToken', pm.response.json().accessToken); pm.environment.set('otherNurseId', JSON.parse(require('atob')(pm.response.json().accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Ward data",
+      "description": "",
+      "item": [
+        {
+          "name": "Grant charge to chargeNurse (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/charge-assignments",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charge-assignments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wardId\": \"{{wardPublicId}}\",\n  \"nurseId\": \"{{chargeNurseId}}\",\n  \"shiftId\": \"{{currentShiftId}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patient (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/patients",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Bola\",\n  \"lastName\": \"Run{{runId}}\",\n  \"wardId\": \"{{wardPublicId}}\",\n  \"bedNumber\": \"O-{{runId}}\",\n  \"dateOfBirth\": \"1955-05-05\",\n  \"status\": \"ADMITTED\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('patientId', pm.response.json().publicId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medication task type, default HIGH (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/task-type-definitions",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "task-type-definitions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM Overdue MED {{runId}}\",\n  \"defaultPriorityLevel\": \"HIGH\",\n  \"requiresDoctorOrder\": true\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('medTypeId', pm.response.json().id); pm.test('defaultPriorityLevel HIGH', function () { pm.expect(pm.response.json().defaultPriorityLevel).to.eql('HIGH'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nursing task type (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{superAdminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/task-type-definitions",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "task-type-definitions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM Overdue OBS {{runId}}\",\n  \"defaultPriorityLevel\": \"LOW\",\n  \"requiresDoctorOrder\": false\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('careTypeId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Timers fire",
+      "description": "",
+      "item": [
+        {
+          "name": "Medication order due in 3 s (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientId}}\",\n  \"taskTypeId\": \"{{medTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{genStart}}\",\n  \"deadline\": \"{{genmedTaskIdDeadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = s => new Date(Date.now() + s * 1000).toISOString();",
+                  "pm.environment.set('genStart', iso(-60)); pm.environment.set('genmedTaskIdDeadline', iso(3));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('medTaskId', pm.response.json().publicId); pm.test('PENDING with priorityLevel', function () { pm.expect(pm.response.json().status).to.eql('PENDING'); pm.expect(pm.response.json().priorityLevel).to.eql('HIGH'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach medication details (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{medTaskId}}/medication-details",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{medTaskId}}",
+                "medication-details"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"drugName\": \"Paracetamol\",\n  \"amount\": 500,\n  \"unit\": \"MILLIGRAM\",\n  \"route\": \"ORAL\",\n  \"frequency\": \"once\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "HIGH nursing task due in 3 s (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientId}}\",\n  \"taskTypeId\": \"{{careTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"NURSING_CARE_PLAN\",\n  \"windowStart\": \"{{genStart}}\",\n  \"deadline\": \"{{genhighTaskIdDeadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = s => new Date(Date.now() + s * 1000).toISOString();",
+                  "pm.environment.set('genStart', iso(-60)); pm.environment.set('genhighTaskIdDeadline', iso(3));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('highTaskId', pm.response.json().publicId); pm.test('PENDING with priorityLevel', function () { pm.expect(pm.response.json().status).to.eql('PENDING'); pm.expect(pm.response.json().priorityLevel).to.eql('HIGH'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LOW nursing task due in 3 s (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientId}}\",\n  \"taskTypeId\": \"{{careTypeId}}\",\n  \"priorityLevel\": \"LOW\",\n  \"origin\": \"NURSING_CARE_PLAN\",\n  \"windowStart\": \"{{genStart}}\",\n  \"deadline\": \"{{genlowTaskIdDeadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = s => new Date(Date.now() + s * 1000).toISOString();",
+                  "pm.environment.set('genStart', iso(-60)); pm.environment.set('genlowTaskIdDeadline', iso(3));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('lowTaskId', pm.response.json().publicId); pm.test('PENDING with priorityLevel', function () { pm.expect(pm.response.json().status).to.eql('PENDING'); pm.expect(pm.response.json().priorityLevel).to.eql('LOW'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medication order is OVERDUE (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{medTaskId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{medTaskId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Wait for the overdue timer (poll 2 s), the outbox (5 s) and the Kafka consumer.",
+                  "setTimeout(() => {}, 14000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('stored OVERDUE with overdueAt', function () { const t = pm.response.json(); pm.expect(t.status).to.eql('OVERDUE'); pm.expect(t.overdueAt).to.be.a('string'); pm.expect(t.overdueDerived).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "HIGH task is OVERDUE (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{highTaskId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{highTaskId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('OVERDUE', function () { pm.expect(pm.response.json().status).to.eql('OVERDUE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LOW task is OVERDUE too (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{lowTaskId}}",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{lowTaskId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('OVERDUE (passive flag only)', function () { pm.expect(pm.response.json().status).to.eql('OVERDUE'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Targeted and ward alerts",
+      "description": "",
+      "item": [
+        {
+          "name": "doctor GET /alerts/mine has MEDICATION_OVERDUE (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/mine",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "mine"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('exactly one MEDICATION_OVERDUE for this task, CRITICAL, requiresAck=true', function () {",
+                  "    const mine = pm.response.json().filter(a => a.taskPublicId === pm.environment.get('medTaskId') && a.type === 'MEDICATION_OVERDUE');",
+                  "    pm.expect(mine.length, 'one alert per recipient (redelivery stays idempotent)').to.eql(1);",
+                  "    pm.expect(mine[0].severity).to.eql('CRITICAL'); pm.expect(mine[0].requiresAck).to.eql(true);",
+                  "    pm.expect(mine[0].targetUserId).to.eql(pm.environment.get('doctorId'));",
+                  "    pm.environment.set('doctorAlertId', mine[0].publicId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chargeNurse GET /alerts/mine has MEDICATION_OVERDUE (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chargeNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/mine",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "mine"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('exactly one MEDICATION_OVERDUE for this task, CRITICAL, requiresAck=true', function () {",
+                  "    const mine = pm.response.json().filter(a => a.taskPublicId === pm.environment.get('medTaskId') && a.type === 'MEDICATION_OVERDUE');",
+                  "    pm.expect(mine.length, 'one alert per recipient (redelivery stays idempotent)').to.eql(1);",
+                  "    pm.expect(mine[0].severity).to.eql('CRITICAL'); pm.expect(mine[0].requiresAck).to.eql(true);",
+                  "    pm.expect(mine[0].targetUserId).to.eql(pm.environment.get('chargeNurseId'));",
+                  "    ",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "otherNurse GET /alerts/mine: none for these tasks (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/mine",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "mine"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('not a recipient', function () { const ids = [pm.environment.get('medTaskId'), pm.environment.get('highTaskId'), pm.environment.get('lowTaskId')]; pm.expect(pm.response.json().filter(a => ids.includes(a.taskPublicId))).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ward replay: TASK_OVERDUE only (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/wards/{{wardPublicId}}/alerts",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wards",
+                "{{wardPublicId}}",
+                "alerts"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('one HIGH ward alert for the HIGH task; no targeted alerts; nothing for the LOW task', function () {",
+                  "    const b = pm.response.json();",
+                  "    b.forEach(a => pm.expect(a.targetUserId).to.eql(null));",
+                  "    const high = b.filter(a => a.taskPublicId === pm.environment.get('highTaskId'));",
+                  "    pm.expect(high.length).to.eql(1); pm.expect(high[0].type).to.eql('TASK_OVERDUE'); pm.expect(high[0].severity).to.eql('HIGH'); pm.expect(high[0].requiresAck).to.eql(true);",
+                  "    pm.expect(b.filter(a => a.taskPublicId === pm.environment.get('lowTaskId'))).to.eql([]);",
+                  "    pm.expect(b.filter(a => a.taskPublicId === pm.environment.get('medTaskId'))).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "otherNurse acknowledges the doctor's alert (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/{{doctorAlertId}}/acknowledge",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "{{doctorAlertId}}",
+                "acknowledge"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chargeNurse acknowledges the doctor's alert (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{chargeNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/{{doctorAlertId}}/acknowledge",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "{{doctorAlertId}}",
+                "acknowledge"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor acknowledges own alert (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/{{doctorAlertId}}/acknowledge",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "{{doctorAlertId}}",
+                "acknowledge"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('acknowledged by the target', function () { const a = pm.response.json(); pm.expect(a.acknowledgedBy).to.eql(pm.environment.get('doctorId')); pm.environment.set('doctorAckAt', a.acknowledgedAt); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repeat acknowledge is idempotent (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/{{doctorAlertId}}/acknowledge",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "{{doctorAlertId}}",
+                "acknowledge"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('same acknowledgedAt', function () { pm.expect(pm.response.json().acknowledgedAt).to.eql(pm.environment.get('doctorAckAt')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor's unacknowledged alerts no longer include it (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/mine?unacknowledgedOnly=true",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "mine"
+              ],
+              "query": [
+                {
+                  "key": "unacknowledgedOnly",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('gone from the unacknowledged list', function () { pm.expect(pm.response.json().map(a => a.publicId)).to.not.include(pm.environment.get('doctorAlertId')); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Medication administered",
+      "description": "",
+      "item": [
+        {
+          "name": "Medication order due in 10 min (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{patientId}}\",\n  \"taskTypeId\": \"{{medTypeId}}\",\n  \"priorityLevel\": \"HIGH\",\n  \"origin\": \"DOCTOR_ORDER\",\n  \"windowStart\": \"{{genStart}}\",\n  \"deadline\": \"{{gengivenTaskIdDeadline}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const iso = s => new Date(Date.now() + s * 1000).toISOString();",
+                  "pm.environment.set('genStart', iso(-60)); pm.environment.set('gengivenTaskIdDeadline', iso(600));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('givenTaskId', pm.response.json().publicId); pm.test('PENDING with priorityLevel', function () { pm.expect(pm.response.json().status).to.eql('PENDING'); pm.expect(pm.response.json().priorityLevel).to.eql('HIGH'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach medication details (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{givenTaskId}}/medication-details",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{givenTaskId}}",
+                "medication-details"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"drugName\": \"Paracetamol\",\n  \"amount\": 500,\n  \"unit\": \"MILLIGRAM\",\n  \"route\": \"ORAL\",\n  \"frequency\": \"once\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "otherNurse starts it (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{givenTaskId}}/start",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{givenTaskId}}",
+                "start"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "otherNurse completes it (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{givenTaskId}}/complete",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{givenTaskId}}",
+                "complete"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor gets an INFO alert (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/mine",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "mine"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Wait for the overdue timer (poll 2 s), the outbox (5 s) and the Kafka consumer.",
+                  "setTimeout(() => {}, 10000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('exactly one MEDICATION_ADMINISTERED, INFO, no ack required', function () {",
+                  "    const a = pm.response.json().filter(x => x.taskPublicId === pm.environment.get('givenTaskId'));",
+                  "    pm.expect(a.length).to.eql(1); pm.expect(a[0].type).to.eql('MEDICATION_ADMINISTERED'); pm.expect(a[0].severity).to.eql('INFO'); pm.expect(a[0].requiresAck).to.eql(false);",
+                  "    pm.environment.set('infoAlertId', a[0].publicId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor dismisses it (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/alerts/{{infoAlertId}}/acknowledge",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "alerts",
+                "{{infoAlertId}}",
+                "acknowledge"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medication order completed late still completes (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{medTaskId}}/start",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{medTaskId}}",
+                "start"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('claimed, stays OVERDUE', function () { pm.expect(pm.response.json().status).to.eql('OVERDUE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "... and completes (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{medTaskId}}/complete",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{medTaskId}}",
+                "complete"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('COMPLETED', function () { pm.expect(pm.response.json().status).to.eql('COMPLETED'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 - Cleanup",
+      "description": "",
+      "item": [
+        {
+          "name": "Cancel the HIGH task (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{highTaskId}}/cancel",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{highTaskId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman overdue run cleanup\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel the LOW task (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherNurseAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayBaseUrl}}/api/v1/care-tasks/{{lowTaskId}}/cancel",
+              "host": [
+                "{{gatewayBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "care-tasks",
+                "{{lowTaskId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman overdue run cleanup\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level: (1) auto-login, (2) fail fast on unset ids. Same pattern as the other CareRound collections.",
+          "const roles = [['superAdmin', 'superAdminEmail', 'superAdminPassword'], ['doctor', 'doctorEmail', 'doctorPassword'],",
+          "               ['chargeNurse', 'chargeNurseEmail', 'chargeNursePassword'], ['otherNurse', 'otherNurseEmail', 'otherNursePassword']];",
+          "function expiresSoon(token) {",
+          "    if (!token) return true;",
+          "    try {",
+          "        const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+          "        return JSON.parse(require('atob')(b64)).exp * 1000 - Date.now() < 60000;",
+          "    } catch (e) { return true; }",
+          "}",
+          "const isLoginRequest = pm.request.url.getPath().endsWith('/api/v1/auth/login');",
+          "roles.forEach(([role, emailVar, passwordVar]) => {",
+          "    if (isLoginRequest) return;",
+          "    const email = pm.environment.get(emailVar), password = pm.environment.get(passwordVar);",
+          "    if (!email || !password || !expiresSoon(pm.environment.get(role + 'AccessToken'))) return;",
+          "    pm.sendRequest({",
+          "        url: pm.environment.get('gatewayBaseUrl') + '/api/v1/auth/login', method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ identifier: email, password: password }) }",
+          "    }, (err, res) => {",
+          "        if (!err && res.code === 200) pm.environment.set(role + 'AccessToken', res.json().accessToken);",
+          "        else console.warn('Auto-login failed for ' + role + ': ' + (err || res.code));",
+          "    });",
+          "});",
+          "const text = pm.request.url.toString() + ((pm.request.body && pm.request.body.raw) || '');",
+          "(text.match(/{{\\s*[A-Za-z]\\w*\\s*}}/g) || []).forEach(ref => {",
+          "    const name = ref.replace(/[{}\\s]/g, '');",
+          "    if (name.endsWith('AccessToken')) return;",
+          "    if (name.startsWith('gen')) return;                     // generated by the request's own pre-request script",
+          "    const value = pm.variables.get(name);",
+          "    if (value === undefined || value === '' || value === 'null') {",
+          "        throw new Error('{{' + name + '}} is not set. Run the request that captures it first (or set it in the environment).');",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ]
+}
