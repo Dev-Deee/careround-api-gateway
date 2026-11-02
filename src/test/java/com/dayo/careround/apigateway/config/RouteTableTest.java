@@ -42,6 +42,10 @@ class RouteTableTest {
             "/api/v1/auth/admin/users, auth",
             "/api/v1/admin/notifications, notification-admin",
             "/api/v1/admin/notifications/failed, notification-admin",
+            // Phase 10a: personal replay and acknowledge sit under the existing alerts rule
+            "/api/v1/alerts/mine, notification-alerts",
+            "/api/v1/alerts/00000000-0000-0000-0000-000000000001/acknowledge, notification-alerts",
+            "/api/v1/care-tasks/00000000-0000-0000-0000-000000000001/start, care-task",
             // specific-before-general and public paths
             "/api/v1/wards/00000000-0000-0000-0000-000000000001/alerts, notification-ward-alerts",
             "/api/v1/wards/00000000-0000-0000-0000-000000000001, ward",
